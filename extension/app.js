@@ -1174,6 +1174,37 @@ async function renderDashboard() {
   await renderStaticDashboard();
 }
 
+let refreshTimer = null;
+let renderInFlight = false;
+let suppressExternalRefreshUntil = 0;
+
+async function refreshDashboardNow() {
+  if (renderInFlight) return;
+  renderInFlight = true;
+  try {
+    await renderDashboard();
+  } finally {
+    renderInFlight = false;
+  }
+}
+
+function scheduleDashboardRefresh() {
+  if (document.visibilityState === 'hidden') return;
+  if (Date.now() < suppressExternalRefreshUntil) return;
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    refreshDashboardNow();
+  }, 200);
+}
+
+async function renderAfterLocalTabChange() {
+  suppressExternalRefreshUntil = Date.now() + 500;
+  clearTimeout(refreshTimer);
+  refreshTimer = null;
+  await refreshDashboardNow();
+}
+
 
 /* ----------------------------------------------------------------
    EVENT HANDLERS — using event delegation
@@ -1252,7 +1283,7 @@ document.addEventListener('click', async (e) => {
     await closeTabsExact(urls);
     playCloseSound();
     if (rect) shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    await renderDashboard();
+    await renderAfterLocalTabChange();
     showToast(`已关闭下方 ${closingCount} 个标签页`);
     return;
   }
@@ -1276,7 +1307,7 @@ document.addEventListener('click', async (e) => {
       shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
 
-    await renderDashboard();
+    await renderAfterLocalTabChange();
     showToast('已关闭标签页');
     return;
   }
@@ -1302,7 +1333,7 @@ document.addEventListener('click', async (e) => {
     const match   = allTabs.find(t => t.url === tabUrl);
     if (match) await chrome.tabs.remove(match.id);
 
-    await renderDashboard();
+    await renderAfterLocalTabChange();
     showToast('已保存到稍后再看');
     return;
   }
@@ -1367,7 +1398,7 @@ document.addEventListener('click', async (e) => {
     }
 
     const groupLabel = group.domain === '__landing-pages__' ? '首页' : (group.label || friendlyDomain(group.domain));
-    await renderDashboard();
+    await renderAfterLocalTabChange();
     showToast(`已关闭「${groupLabel}」中的 ${urls.length} 个标签页`);
     return;
   }
@@ -1386,7 +1417,7 @@ document.addEventListener('click', async (e) => {
       shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
 
-    await renderDashboard();
+    await renderAfterLocalTabChange();
     showToast('已关闭重复标签页，已保留一个');
     return;
   }
@@ -1404,7 +1435,7 @@ document.addEventListener('click', async (e) => {
       );
     });
 
-    await renderDashboard();
+    await renderAfterLocalTabChange();
     showToast('已关闭全部标签页，清爽了');
     return;
   }
@@ -1456,4 +1487,17 @@ document.addEventListener('input', async (e) => {
 /* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
-renderDashboard();
+chrome.tabs.onCreated.addListener(scheduleDashboardRefresh);
+chrome.tabs.onRemoved.addListener(scheduleDashboardRefresh);
+chrome.tabs.onUpdated.addListener(scheduleDashboardRefresh);
+chrome.tabs.onActivated.addListener(scheduleDashboardRefresh);
+chrome.windows.onFocusChanged.addListener(scheduleDashboardRefresh);
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.deferred) scheduleDashboardRefresh();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') scheduleDashboardRefresh();
+});
+
+refreshDashboardNow();
