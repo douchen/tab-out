@@ -18,12 +18,14 @@
   --status-abandoned: #b35a5a;
   --card-bg: #fffdf9;
   --shadow: rgba(26, 22, 19, 0.06);
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   background: var(--paper);
   color: var(--ink);
   min-height: 100vh;
@@ -65,7 +67,7 @@ header {
 }
 
 .header-left h1 {
-  font-family: 'Newsreader', serif;
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: 28px;
   letter-spacing: -0.5px;
@@ -127,7 +129,7 @@ header {
 }
 
 .tab-cleanup-btn {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 600;
   padding: 8px 20px;
@@ -194,7 +196,7 @@ header {
 }
 
 .section-header h2 {
-  font-family: 'Newsreader', serif;
+  font-family: var(--font-display);
   font-weight: 400;
   font-size: 18px;
   font-style: italic;
@@ -384,6 +386,26 @@ header {
   border-radius: 2px;
 }
 
+.favicon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(90, 122, 98, 0.12);
+  color: var(--accent-sage);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.deferred-favicon {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
 /* Title text — wraps naturally, no truncation */
 .chip-text {
   flex: 1;
@@ -477,7 +499,7 @@ header {
 
 .mission-page-count {
   font-size: 20px;
-  font-family: 'Newsreader', serif;
+  font-family: var(--font-display);
   font-weight: 300;
   color: var(--ink);
   line-height: 1;
@@ -499,7 +521,7 @@ header {
 
 .action-btn {
   font-size: 11px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-weight: 500;
   padding: 5px 14px;
   border-radius: 4px;
@@ -572,7 +594,7 @@ header {
   transform: translateX(-50%) translateY(80px);
   background: var(--ink);
   color: var(--paper);
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 500;
   padding: 12px 24px;
@@ -618,7 +640,7 @@ footer {
 }
 
 .stat-num {
-  font-family: 'Newsreader', serif;
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 300;
   color: var(--ink);
@@ -640,7 +662,7 @@ footer {
 }
 
 .refresh-btn {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 500;
   color: var(--accent-amber);
@@ -749,7 +771,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .empty-title {
-  font-family: 'Newsreader', serif;
+  font-family: var(--font-display);
   font-size: 20px;
   font-weight: 400;
   font-style: italic;
@@ -833,7 +855,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 
 /* "Update now" button — small, filled, sage green */
 .update-banner-btn {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 500;
   color: #fff;
@@ -1013,7 +1035,8 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 /* Dismiss (X) button */
-.deferred-dismiss {
+.deferred-dismiss,
+.archive-dismiss {
   background: none;
   border: none;
   color: var(--muted);
@@ -1025,18 +1048,21 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   margin-top: 1px;
 }
 
-.deferred-dismiss svg {
+.deferred-dismiss svg,
+.archive-dismiss svg {
   width: 14px;
   height: 14px;
 }
 
-.deferred-dismiss:hover {
+.deferred-dismiss:hover,
+.archive-dismiss:hover {
   opacity: 1;
   color: var(--status-abandoned);
 }
 
 /* Slide-out animation for items being removed */
-.deferred-item.removing {
+.deferred-item.removing,
+.archive-item.removing {
   opacity: 0;
   transform: translateX(20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -1059,7 +1085,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .archive-toggle {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
@@ -1100,7 +1126,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .archive-search {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   width: 100%;
   padding: 8px 12px;
