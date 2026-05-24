@@ -656,11 +656,6 @@ footer {
   margin-top: 4px;
 }
 
-.last-refresh {
-  font-size: 11px;
-  color: var(--muted);
-}
-
 .refresh-btn {
   font-family: var(--font-body);
   font-size: 11px;
