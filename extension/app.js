@@ -415,25 +415,6 @@ function shootConfetti(x, y) {
 }
 
 /**
- * animateCardOut(card)
- *
- * Smoothly removes a mission card: fade + scale down, then confetti.
- * After the animation, checks if the grid is now empty.
- */
-function animateCardOut(card) {
-  if (!card) return;
-
-  const rect = card.getBoundingClientRect();
-  shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
-
-  card.classList.add('closing');
-  setTimeout(() => {
-    card.remove();
-    checkAndShowEmptyState();
-  }, 300);
-}
-
-/**
  * showToast(message)
  *
  * Brief pop-up notification at the bottom of the screen.
@@ -445,19 +426,8 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('visible'), 2500);
 }
 
-/**
- * checkAndShowEmptyState()
- *
- * Shows a cheerful "Inbox zero" message when all domain cards are gone.
- */
-function checkAndShowEmptyState() {
-  const missionsEl = document.getElementById('openTabsMissions');
-  if (!missionsEl) return;
-
-  const remaining = missionsEl.querySelectorAll('.mission-card:not(.closing)').length;
-  if (remaining > 0) return;
-
-  missionsEl.innerHTML = `
+function renderOpenTabsEmptyState() {
+  return `
     <div class="missions-empty-state">
       <div class="empty-checkmark">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -468,9 +438,6 @@ function checkAndShowEmptyState() {
       <div class="empty-subtitle">现在轻松一点。</div>
     </div>
   `;
-
-  const countEl = document.getElementById('openTabsSectionCount');
-  if (countEl) countEl.textContent = '0 个分组';
 }
 
 /**
@@ -701,6 +668,7 @@ function smartTitle(title, url) {
 const ICONS = {
   tabs:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8.25V18a2.25 2.25 0 0 0 2.25 2.25h13.5A2.25 2.25 0 0 0 21 18V8.25m-18 0V6a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 6v2.25m-18 0h18" /></svg>`,
   close:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`,
+  closeBelow: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 4.5-4.5M12 16l-4.5-4.5M5 20h14" /></svg>`,
   archive: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" /></svg>`,
   focus:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25" /></svg>`,
 };
@@ -760,29 +728,64 @@ function checkTabOutDupes() {
    OVERFLOW CHIPS ("+N more" expand button in domain cards)
    ---------------------------------------------------------------- */
 
-function buildOverflowChips(hiddenTabs, urlCounts = {}) {
-  const hiddenChips = hiddenTabs.map(tab => {
-    const label    = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), '');
-    const count    = urlCounts[tab.url] || 1;
-    const dupeTag  = count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : '';
-    const chipClass = count > 1 ? ' chip-has-dupes' : '';
-    const safeUrl   = escapeAttr(tab.url || '');
-    const safeTitle = escapeAttr(label);
-    const safeLabel = escapeHtml(label);
-    const domain = getHostname(tab.url);
-    return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${renderLocalFavicon(domain)}
-      <span class="chip-text">${safeLabel}</span>${dupeTag}
-      <div class="chip-actions">
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="保存到稍后再看">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
-        </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="关闭这个标签页">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-        </button>
-      </div>
-    </div>`;
-  }).join('');
+function renderTabChip(tab, options) {
+  const {
+    groupDomain = '',
+    domainId = '',
+    index = 0,
+    total = 0,
+    urlCounts = {},
+  } = options || {};
+
+  let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), groupDomain);
+  // For localhost tabs, prepend port number so you can tell projects apart
+  try {
+    const parsed = new URL(tab.url);
+    if (parsed.hostname === 'localhost' && parsed.port) label = `${parsed.port} ${label}`;
+  } catch {}
+
+  const count = urlCounts[tab.url] || 1;
+  const dupeTag = count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : '';
+  const chipClass = count > 1 ? ' chip-has-dupes' : '';
+  const safeUrl = escapeAttr(tab.url || '');
+  const safeTitle = escapeAttr(label);
+  const safeLabel = escapeHtml(label);
+  const safeDomainId = escapeAttr(domainId);
+  const safeIndex = escapeAttr(index);
+  const domain = getHostname(tab.url);
+  const closeBelowButton = index < total - 1
+    ? `<button class="chip-action chip-close-below" data-action="close-tabs-below" data-domain-id="${safeDomainId}" data-tab-index="${safeIndex}" title="关闭下方标签页">
+          ${ICONS.closeBelow}
+        </button>`
+    : '';
+
+  return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" data-domain-id="${safeDomainId}" data-tab-index="${safeIndex}" title="${safeTitle}">
+    ${renderLocalFavicon(domain)}
+    <span class="chip-text">${safeLabel}</span>${dupeTag}
+    <div class="chip-actions">
+      <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="保存到稍后再看">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
+      </button>
+      ${closeBelowButton}
+      <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="关闭这个标签页">
+        ${ICONS.close}
+      </button>
+    </div>
+  </div>`;
+}
+
+function buildOverflowChips(hiddenTabs, options = {}) {
+  const {
+    startIndex = 0,
+    total = hiddenTabs.length,
+    ...chipOptions
+  } = options;
+
+  const hiddenChips = hiddenTabs.map((tab, offset) => renderTabChip(tab, {
+    ...chipOptions,
+    index: startIndex + offset,
+    total,
+  })).join('');
 
   return `
     <div class="page-chips-overflow" style="display:none">${hiddenChips}</div>
@@ -838,33 +841,19 @@ function renderDomainCard(group) {
   const visibleTabs = uniqueTabs.slice(0, 8);
   const extraCount  = uniqueTabs.length - visibleTabs.length;
 
-  const pageChips = visibleTabs.map(tab => {
-    let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), group.domain);
-    // For localhost tabs, prepend port number so you can tell projects apart
-    try {
-      const parsed = new URL(tab.url);
-      if (parsed.hostname === 'localhost' && parsed.port) label = `${parsed.port} ${label}`;
-    } catch {}
-    const count    = urlCounts[tab.url];
-    const dupeTag  = count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : '';
-    const chipClass = count > 1 ? ' chip-has-dupes' : '';
-    const safeUrl   = escapeAttr(tab.url || '');
-    const safeTitle = escapeAttr(label);
-    const safeLabel = escapeHtml(label);
-    const domain = getHostname(tab.url);
-    return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${renderLocalFavicon(domain)}
-      <span class="chip-text">${safeLabel}</span>${dupeTag}
-      <div class="chip-actions">
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="保存到稍后再看">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
-        </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="关闭这个标签页">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-        </button>
-      </div>
-    </div>`;
-  }).join('') + (extraCount > 0 ? buildOverflowChips(uniqueTabs.slice(8), urlCounts) : '');
+  const chipOptions = {
+    groupDomain: group.domain,
+    domainId: stableId,
+    total: uniqueTabs.length,
+    urlCounts,
+  };
+  const pageChips = visibleTabs.map((tab, index) => renderTabChip(tab, {
+    ...chipOptions,
+    index,
+  })).join('') + (extraCount > 0 ? buildOverflowChips(uniqueTabs.slice(8), {
+    ...chipOptions,
+    startIndex: 8,
+  }) : '');
 
   let actionsHtml = `
     <button class="action-btn close-tabs" data-action="close-domain-tabs" data-domain-id="${safeStableId}">
@@ -1164,7 +1153,10 @@ async function renderStaticDashboard() {
     openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     openTabsSection.style.display = 'block';
   } else if (openTabsSection) {
-    openTabsSection.style.display = 'none';
+    if (openTabsSectionTitle) openTabsSectionTitle.textContent = '打开的标签页';
+    if (openTabsSectionCount) openTabsSectionCount.textContent = '0 个分组';
+    if (openTabsMissionsEl) openTabsMissionsEl.innerHTML = renderOpenTabsEmptyState();
+    openTabsSection.style.display = 'block';
   }
 
   // --- Footer stats ---
@@ -1231,6 +1223,40 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  // ---- Close every tab below this row in the same domain group ----
+  if (action === 'close-tabs-below') {
+    e.stopPropagation(); // don't trigger parent chip's focus-tab
+    const domainId = actionEl.dataset.domainId;
+    const tabIndex = Number.parseInt(actionEl.dataset.tabIndex || '', 10);
+    if (!domainId || !Number.isInteger(tabIndex)) return;
+
+    const group = domainGroups.find(g => domainGroupId(g.domain) === domainId);
+    if (!group) return;
+
+    const seen = new Set();
+    const uniqueTabs = [];
+    for (const tab of group.tabs || []) {
+      if (!seen.has(tab.url)) { seen.add(tab.url); uniqueTabs.push(tab); }
+    }
+
+    if (tabIndex < 0 || tabIndex >= uniqueTabs.length - 1) return;
+
+    const urls = uniqueTabs.slice(tabIndex + 1).map(t => t.url).filter(Boolean);
+    if (urls.length === 0) return;
+
+    const urlSet = new Set(urls);
+    const closingCount = (group.tabs || []).filter(t => urlSet.has(t.url)).length;
+    const chip = actionEl.closest('.page-chip');
+    const rect = chip ? chip.getBoundingClientRect() : null;
+
+    await closeTabsExact(urls);
+    playCloseSound();
+    if (rect) shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    await renderDashboard();
+    showToast(`已关闭下方 ${closingCount} 个标签页`);
+    return;
+  }
+
   // ---- Close a single tab ----
   if (action === 'close-single-tab') {
     e.stopPropagation(); // don't trigger parent chip's focus-tab
@@ -1241,35 +1267,16 @@ document.addEventListener('click', async (e) => {
     const allTabs = await chrome.tabs.query({});
     const match   = allTabs.find(t => t.url === tabUrl);
     if (match) await chrome.tabs.remove(match.id);
-    await fetchOpenTabs();
 
     playCloseSound();
 
-    // Animate the chip row out
     const chip = actionEl.closest('.page-chip');
     if (chip) {
       const rect = chip.getBoundingClientRect();
       shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      chip.style.transition = 'opacity 0.2s, transform 0.2s';
-      chip.style.opacity    = '0';
-      chip.style.transform  = 'scale(0.8)';
-      setTimeout(() => {
-        chip.remove();
-        // If the card now has no tabs, remove it too
-        const parentCard = document.querySelector('.mission-card:has(.mission-pages:empty)');
-        if (parentCard) animateCardOut(parentCard);
-        document.querySelectorAll('.mission-card').forEach(c => {
-          if (c.querySelectorAll('.page-chip[data-action="focus-tab"]').length === 0) {
-            animateCardOut(c);
-          }
-        });
-      }, 200);
     }
 
-    // Update footer
-    const statTabs = document.getElementById('statTabs');
-    if (statTabs) statTabs.textContent = openTabs.length;
-
+    await renderDashboard();
     showToast('已关闭标签页');
     return;
   }
@@ -1294,19 +1301,9 @@ document.addEventListener('click', async (e) => {
     const allTabs = await chrome.tabs.query({});
     const match   = allTabs.find(t => t.url === tabUrl);
     if (match) await chrome.tabs.remove(match.id);
-    await fetchOpenTabs();
 
-    // Animate chip out
-    const chip = actionEl.closest('.page-chip');
-    if (chip) {
-      chip.style.transition = 'opacity 0.2s, transform 0.2s';
-      chip.style.opacity    = '0';
-      chip.style.transform  = 'scale(0.8)';
-      setTimeout(() => chip.remove(), 200);
-    }
-
+    await renderDashboard();
     showToast('已保存到稍后再看');
-    await renderDeferredColumn();
     return;
   }
 
@@ -1365,18 +1362,13 @@ document.addEventListener('click', async (e) => {
 
     if (card) {
       playCloseSound();
-      animateCardOut(card);
+      const rect = card.getBoundingClientRect();
+      shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
 
-    // Remove from in-memory groups
-    const idx = domainGroups.indexOf(group);
-    if (idx !== -1) domainGroups.splice(idx, 1);
-
     const groupLabel = group.domain === '__landing-pages__' ? '首页' : (group.label || friendlyDomain(group.domain));
+    await renderDashboard();
     showToast(`已关闭「${groupLabel}」中的 ${urls.length} 个标签页`);
-
-    const statTabs = document.getElementById('statTabs');
-    if (statTabs) statTabs.textContent = openTabs.length;
     return;
   }
 
@@ -1389,29 +1381,12 @@ document.addEventListener('click', async (e) => {
     await closeDuplicateTabs(urls, true);
     playCloseSound();
 
-    // Hide the dedup button
-    actionEl.style.transition = 'opacity 0.2s';
-    actionEl.style.opacity    = '0';
-    setTimeout(() => actionEl.remove(), 200);
-
-    // Remove dupe badges from the card
     if (card) {
-      card.querySelectorAll('.chip-dupe-badge').forEach(b => {
-        b.style.transition = 'opacity 0.2s';
-        b.style.opacity    = '0';
-        setTimeout(() => b.remove(), 200);
-      });
-      card.querySelectorAll('.open-tabs-badge').forEach(badge => {
-        if (badge.textContent.includes('重复')) {
-          badge.style.transition = 'opacity 0.2s';
-          badge.style.opacity    = '0';
-          setTimeout(() => badge.remove(), 200);
-        }
-      });
-      card.classList.remove('has-amber-bar');
-      card.classList.add('has-neutral-bar');
+      const rect = card.getBoundingClientRect();
+      shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
 
+    await renderDashboard();
     showToast('已关闭重复标签页，已保留一个');
     return;
   }
@@ -1427,9 +1402,9 @@ document.addEventListener('click', async (e) => {
         c.getBoundingClientRect().left + c.offsetWidth / 2,
         c.getBoundingClientRect().top  + c.offsetHeight / 2
       );
-      animateCardOut(c);
     });
 
+    await renderDashboard();
     showToast('已关闭全部标签页，清爽了');
     return;
   }
