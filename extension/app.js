@@ -98,33 +98,39 @@ async function fetchOpenTabs() {
 }
 
 /**
- * closeTabsExact(urls)
+ * closeTabIds(tabIds)
  *
- * Closes tabs by exact URL match (not hostname). This avoids closing
- * related pages that happen to share a domain with the visible group.
+ * Closes exact Chrome tab ids so duplicate URLs do not get swept up by a
+ * URL-only bulk action.
  */
-async function closeTabsExact(urls) {
-  if (!urls || urls.length === 0) return;
-  const urlSet = new Set(urls);
-  const allTabs = await chrome.tabs.query({});
-  const toClose = allTabs.filter(t => urlSet.has(t.url)).map(t => t.id);
-  if (toClose.length > 0) await chrome.tabs.remove(toClose);
+async function closeTabIds(tabIds) {
+  const ids = [...new Set((tabIds || []).filter(Number.isInteger))];
+  if (ids.length > 0) await chrome.tabs.remove(ids);
   await fetchOpenTabs();
 }
 
 /**
- * focusTab(url)
+ * focusTab(url, tabId)
  *
- * Switches Chrome to the tab with the given URL (exact match first,
- * then hostname fallback). Also brings the window to the front.
+ * Switches Chrome to the clicked tab when possible (tab id first,
+ * then exact URL, then hostname fallback). Also brings the window to the front.
  */
-async function focusTab(url) {
+async function focusTab(url, tabId) {
   if (!url) return;
   const allTabs = await chrome.tabs.query({});
   const currentWindow = await chrome.windows.getCurrent();
 
+  let matches = [];
+
+  // Prefer the exact tab row the user clicked. This matters for duplicate URLs,
+  // where URL-only matching can focus the wrong copy.
+  if (Number.isInteger(tabId)) {
+    const match = allTabs.find(t => t.id === tabId);
+    if (match) matches = [match];
+  }
+
   // Try exact URL match first
-  let matches = allTabs.filter(t => t.url === url);
+  if (matches.length === 0) matches = allTabs.filter(t => t.url === url);
 
   // Fall back to hostname match
   if (matches.length === 0) {
@@ -143,6 +149,33 @@ async function focusTab(url) {
   const match = matches.find(t => t.windowId !== currentWindow.id) || matches[0];
   await chrome.tabs.update(match.id, { active: true });
   await chrome.windows.update(match.windowId, { focused: true });
+}
+
+/**
+ * openPinnedPage(url)
+ *
+ * Opens a pinned page. If that exact URL is already open, focus it instead
+ * of making another copy.
+ */
+async function openPinnedPage(url) {
+  if (!url) return;
+
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:', 'file:'].includes(parsed.protocol)) return;
+  } catch {
+    return;
+  }
+
+  const allTabs = await chrome.tabs.query({});
+  const existing = allTabs.find(t => t.url === url);
+  if (existing) {
+    await focusTab(url, existing.id);
+    return;
+  }
+
+  await chrome.tabs.create({ url });
+  await fetchOpenTabs();
 }
 
 /**
@@ -284,6 +317,42 @@ async function dismissSavedTab(id) {
     tab.dismissed = true;
     await chrome.storage.local.set({ deferred });
   }
+}
+
+
+/* ----------------------------------------------------------------
+   PINNED PAGES — chrome.storage.local
+
+   These are durable shortcuts, not Chrome's native pinned tabs. A pinned page
+   stays visible even after every open tab has been closed.
+   ---------------------------------------------------------------- */
+
+const PINNED_PAGES_KEY = 'pinnedPages';
+
+async function getPinnedPages() {
+  const result = await chrome.storage.local.get(PINNED_PAGES_KEY);
+  const pages = Array.isArray(result[PINNED_PAGES_KEY]) ? result[PINNED_PAGES_KEY] : [];
+  return pages.filter(page => page && page.url);
+}
+
+async function pinPage(tab) {
+  const pages = await getPinnedPages();
+  if (pages.some(page => page.url === tab.url)) return false;
+
+  pages.push({
+    id: Date.now().toString(),
+    url: tab.url,
+    title: tab.title || tab.url,
+    pinnedAt: new Date().toISOString(),
+  });
+  await chrome.storage.local.set({ [PINNED_PAGES_KEY]: pages });
+  return true;
+}
+
+async function unpinPage(url) {
+  const pages = await getPinnedPages();
+  const next = pages.filter(page => page.url !== url);
+  await chrome.storage.local.set({ [PINNED_PAGES_KEY]: next });
 }
 
 
@@ -671,6 +740,7 @@ const ICONS = {
   closeBelow: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 4.5-4.5M12 16l-4.5-4.5M5 20h14" /></svg>`,
   archive: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" /></svg>`,
   focus:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25" /></svg>`,
+  pin:     `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.25 4.5 5.25 5.25-2.25 2.25 1.5 1.5-2.25 2.25-1.5-1.5-4.5 4.5v-3l-3.75-3.75-1.5 1.5L3 11.25 10.5 3.75 12 5.25l2.25-.75Z" /></svg>`,
 };
 
 
@@ -735,6 +805,7 @@ function renderTabChip(tab, options) {
     index = 0,
     total = 0,
     urlCounts = {},
+    pinnedUrls = new Set(),
   } = options || {};
 
   let label = cleanTitle(smartTitle(stripTitleNoise(tab.title || ''), tab.url), groupDomain);
@@ -748,26 +819,32 @@ function renderTabChip(tab, options) {
   const dupeTag = count > 1 ? ` <span class="chip-dupe-badge">(${count}x)</span>` : '';
   const chipClass = count > 1 ? ' chip-has-dupes' : '';
   const safeUrl = escapeAttr(tab.url || '');
+  const safeTabId = Number.isInteger(tab.id) ? escapeAttr(tab.id) : '';
   const safeTitle = escapeAttr(label);
   const safeLabel = escapeHtml(label);
   const safeDomainId = escapeAttr(domainId);
   const safeIndex = escapeAttr(index);
   const domain = getHostname(tab.url);
+  const isPinned = pinnedUrls.has(tab.url);
+  const pinTitle = isPinned ? '取消固定' : '固定到上方';
   const closeBelowButton = index < total - 1
     ? `<button class="chip-action chip-close-below" data-action="close-tabs-below" data-domain-id="${safeDomainId}" data-tab-index="${safeIndex}" title="关闭下方标签页">
           ${ICONS.closeBelow}
         </button>`
     : '';
 
-  return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" data-domain-id="${safeDomainId}" data-tab-index="${safeIndex}" title="${safeTitle}">
+  return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-id="${safeTabId}" data-tab-url="${safeUrl}" data-domain-id="${safeDomainId}" data-tab-index="${safeIndex}" title="${safeTitle}">
     ${renderLocalFavicon(domain)}
     <span class="chip-text">${safeLabel}</span>${dupeTag}
     <div class="chip-actions">
-      <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="保存到稍后再看">
+      <button class="chip-action chip-pin${isPinned ? ' is-pinned' : ''}" data-action="toggle-pin-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" data-pinned="${isPinned ? 'true' : 'false'}" title="${pinTitle}">
+        ${ICONS.pin}
+      </button>
+      <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-id="${safeTabId}" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="保存到稍后再看">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
       </button>
       ${closeBelowButton}
-      <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="关闭这个标签页">
+      <button class="chip-action chip-close" data-action="close-single-tab" data-tab-id="${safeTabId}" data-tab-url="${safeUrl}" title="关闭这个标签页">
         ${ICONS.close}
       </button>
     </div>
@@ -800,12 +877,12 @@ function buildOverflowChips(hiddenTabs, options = {}) {
    ---------------------------------------------------------------- */
 
 /**
- * renderDomainCard(group, groupIndex)
+ * renderDomainCard(group, globalUrlCounts, pinnedUrls)
  *
  * Builds the HTML for one domain group card.
  * group = { domain: string, tabs: [{ url, title, id, windowId, active }] }
  */
-function renderDomainCard(group) {
+function renderDomainCard(group, globalUrlCounts = null, pinnedUrls = new Set()) {
   const tabs      = group.tabs || [];
   const tabCount  = tabs.length;
   const isLanding = group.domain === '__landing-pages__';
@@ -813,10 +890,13 @@ function renderDomainCard(group) {
   const safeStableId = escapeAttr(stableId);
   const groupName = isLanding ? '首页' : (group.label || friendlyDomain(group.domain));
 
-  // Count duplicates (exact URL match)
-  const urlCounts = {};
-  for (const tab of tabs) urlCounts[tab.url] = (urlCounts[tab.url] || 0) + 1;
-  const dupeUrls   = Object.entries(urlCounts).filter(([, c]) => c > 1);
+  // Count duplicates globally so pinned and unpinned copies still get flagged.
+  const urlCounts = globalUrlCounts || {};
+  if (!globalUrlCounts) {
+    for (const tab of tabs) urlCounts[tab.url] = (urlCounts[tab.url] || 0) + 1;
+  }
+  const groupUrls = new Set(tabs.map(t => t.url));
+  const dupeUrls  = [...groupUrls].map(url => [url, urlCounts[url] || 0]).filter(([, c]) => c > 1);
   const hasDupes   = dupeUrls.length > 0;
   const totalExtras = dupeUrls.reduce((s, [, c]) => s + c - 1, 0);
 
@@ -846,6 +926,7 @@ function renderDomainCard(group) {
     domainId: stableId,
     total: uniqueTabs.length,
     urlCounts,
+    pinnedUrls,
   };
   const pageChips = visibleTabs.map((tab, index) => renderTabChip(tab, {
     ...chipOptions,
@@ -1002,6 +1083,51 @@ function renderArchiveItem(item) {
     </div>`;
 }
 
+function renderPinnedPage(page, openUrlCounts = {}) {
+  let domain = '';
+  try { domain = new URL(page.url).hostname.replace(/^www\./, ''); } catch {}
+
+  const rawTitle = page.title || page.url || '未命名';
+  const displayTitle = cleanTitle(smartTitle(stripTitleNoise(rawTitle), page.url), getHostname(page.url));
+  const openCount = openUrlCounts[page.url] || 0;
+  const statusText = openCount > 0 ? `已打开 ${openCount}` : '点击打开';
+  const safeUrl = escapeAttr(page.url || '');
+  const safeTitle = escapeAttr(displayTitle);
+
+  return `
+    <div class="pinned-page" data-pinned-url="${safeUrl}">
+      <button class="pinned-page-main" data-action="open-pinned-page" data-pinned-url="${safeUrl}" title="${safeTitle}">
+        ${renderLocalFavicon(domain, 'pinned-favicon')}
+        <span class="pinned-page-text">
+          <span class="pinned-page-title">${escapeHtml(displayTitle)}</span>
+          <span class="pinned-page-meta">${escapeHtml(domain)}</span>
+        </span>
+        <span class="pinned-page-status">${escapeHtml(statusText)}</span>
+      </button>
+      <button class="pinned-page-remove" data-action="unpin-page" data-pinned-url="${safeUrl}" title="取消固定">
+        ${ICONS.close}
+      </button>
+    </div>`;
+}
+
+function renderPinnedSection(pinnedPages, openUrlCounts = {}) {
+  const section = document.getElementById('pinnedSection');
+  const list = document.getElementById('pinnedPages');
+  const count = document.getElementById('pinnedCount');
+  if (!section || !list || !count) return;
+
+  if (pinnedPages.length === 0) {
+    section.style.display = 'none';
+    list.innerHTML = '';
+    count.textContent = '';
+    return;
+  }
+
+  count.textContent = `${pinnedPages.length} 个固定页面`;
+  list.innerHTML = pinnedPages.map(page => renderPinnedPage(page, openUrlCounts)).join('');
+  section.style.display = 'block';
+}
+
 
 /* ----------------------------------------------------------------
    MAIN DASHBOARD RENDERER
@@ -1028,6 +1154,12 @@ async function renderStaticDashboard() {
   // --- Fetch tabs ---
   await fetchOpenTabs();
   const realTabs = getRealTabs();
+  const globalUrlCounts = {};
+  for (const tab of realTabs) globalUrlCounts[tab.url] = (globalUrlCounts[tab.url] || 0) + 1;
+  const pinnedPages = await getPinnedPages();
+  const pinnedUrls = new Set(pinnedPages.map(page => page.url));
+
+  renderPinnedSection(pinnedPages, globalUrlCounts);
 
   // --- Group tabs by domain ---
   // Landing pages (Gmail inbox, Twitter home, etc.) get their own special group
@@ -1121,7 +1253,7 @@ async function renderStaticDashboard() {
     groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
   }
 
-  // Sort: landing pages first, then domains from landing page sites, then by tab count
+  // Sort: landing pages first, then domains from landing page sites, then by tab count.
   // Collect exact hostnames and suffix patterns for priority sorting
   const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
   const landingSuffixes = LANDING_PAGE_PATTERNS.map(p => p.hostnameEndsWith).filter(Boolean);
@@ -1149,8 +1281,11 @@ async function renderStaticDashboard() {
 
   if (domainGroups.length > 0 && openTabsSection) {
     if (openTabsSectionTitle) openTabsSectionTitle.textContent = '打开的标签页';
-    openTabsSectionCount.innerHTML = `${domainGroups.length} 个分组 &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} 关闭全部 ${realTabs.length} 个标签页</button>`;
-    openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
+    const closeAllButton = realTabs.length > 0
+      ? ` &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} 关闭全部 ${realTabs.length} 个标签页</button>`
+      : '';
+    openTabsSectionCount.innerHTML = `${domainGroups.length} 个分组${closeAllButton}`;
+    openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g, globalUrlCounts, pinnedUrls)).join('');
     openTabsSection.style.display = 'block';
   } else if (openTabsSection) {
     if (openTabsSectionTitle) openTabsSectionTitle.textContent = '打开的标签页';
@@ -1250,7 +1385,54 @@ document.addEventListener('click', async (e) => {
   // ---- Focus a specific tab ----
   if (action === 'focus-tab') {
     const tabUrl = actionEl.dataset.tabUrl;
-    if (tabUrl) await focusTab(tabUrl);
+    const tabId = Number.parseInt(actionEl.dataset.tabId || '', 10);
+    if (tabUrl) await focusTab(tabUrl, Number.isInteger(tabId) ? tabId : null);
+    return;
+  }
+
+  // ---- Pin or unpin a tab ----
+  if (action === 'toggle-pin-tab') {
+    e.stopPropagation(); // don't trigger parent chip's focus-tab
+    const tabUrl = actionEl.dataset.tabUrl;
+    const tabTitle = actionEl.dataset.tabTitle || tabUrl;
+    if (!tabUrl) return;
+
+    try {
+      if (actionEl.dataset.pinned === 'true') {
+        await unpinPage(tabUrl);
+        await refreshDashboardNow();
+        showToast('已取消固定');
+      } else {
+        await pinPage({ url: tabUrl, title: tabTitle });
+        await refreshDashboardNow();
+        showToast('已固定到上方');
+      }
+    } catch (err) {
+      console.error('[tab-out] 固定标签页失败:', err);
+      showToast('固定失败');
+    }
+    return;
+  }
+
+  // ---- Open a pinned page ----
+  if (action === 'open-pinned-page') {
+    const pinnedUrl = actionEl.dataset.pinnedUrl;
+    if (!pinnedUrl) return;
+
+    await openPinnedPage(pinnedUrl);
+    await renderAfterLocalTabChange();
+    return;
+  }
+
+  // ---- Remove a pinned page shortcut ----
+  if (action === 'unpin-page') {
+    e.stopPropagation();
+    const pinnedUrl = actionEl.dataset.pinnedUrl;
+    if (!pinnedUrl) return;
+
+    await unpinPage(pinnedUrl);
+    await refreshDashboardNow();
+    showToast('已取消固定');
     return;
   }
 
@@ -1276,11 +1458,12 @@ document.addEventListener('click', async (e) => {
     if (urls.length === 0) return;
 
     const urlSet = new Set(urls);
-    const closingCount = (group.tabs || []).filter(t => urlSet.has(t.url)).length;
+    const closingTabs = (group.tabs || []).filter(t => urlSet.has(t.url));
+    const closingCount = closingTabs.length;
     const chip = actionEl.closest('.page-chip');
     const rect = chip ? chip.getBoundingClientRect() : null;
 
-    await closeTabsExact(urls);
+    await closeTabIds(closingTabs.map(t => t.id));
     playCloseSound();
     if (rect) shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
     await renderAfterLocalTabChange();
@@ -1292,11 +1475,14 @@ document.addEventListener('click', async (e) => {
   if (action === 'close-single-tab') {
     e.stopPropagation(); // don't trigger parent chip's focus-tab
     const tabUrl = actionEl.dataset.tabUrl;
+    const tabId = Number.parseInt(actionEl.dataset.tabId || '', 10);
     if (!tabUrl) return;
 
     // Close the tab in Chrome directly
     const allTabs = await chrome.tabs.query({});
-    const match   = allTabs.find(t => t.url === tabUrl);
+    const match = Number.isInteger(tabId)
+      ? allTabs.find(t => t.id === tabId)
+      : allTabs.find(t => t.url === tabUrl);
     if (match) await chrome.tabs.remove(match.id);
 
     playCloseSound();
@@ -1317,6 +1503,7 @@ document.addEventListener('click', async (e) => {
     e.stopPropagation();
     const tabUrl   = actionEl.dataset.tabUrl;
     const tabTitle = actionEl.dataset.tabTitle || tabUrl;
+    const tabId    = Number.parseInt(actionEl.dataset.tabId || '', 10);
     if (!tabUrl) return;
 
     // Save to chrome.storage.local
@@ -1330,7 +1517,9 @@ document.addEventListener('click', async (e) => {
 
     // Close the tab in Chrome
     const allTabs = await chrome.tabs.query({});
-    const match   = allTabs.find(t => t.url === tabUrl);
+    const match = Number.isInteger(tabId)
+      ? allTabs.find(t => t.id === tabId)
+      : allTabs.find(t => t.url === tabUrl);
     if (match) await chrome.tabs.remove(match.id);
 
     await renderAfterLocalTabChange();
@@ -1388,8 +1577,8 @@ document.addEventListener('click', async (e) => {
     });
     if (!group) return;
 
-    const urls      = group.tabs.map(t => t.url);
-    await closeTabsExact(urls);
+    const tabIds = group.tabs.map(t => t.id).filter(Number.isInteger);
+    await closeTabIds(tabIds);
 
     if (card) {
       playCloseSound();
@@ -1397,9 +1586,11 @@ document.addEventListener('click', async (e) => {
       shootConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
 
-    const groupLabel = group.domain === '__landing-pages__' ? '首页' : (group.label || friendlyDomain(group.domain));
+    const groupLabel = group.domain === '__landing-pages__'
+        ? '首页'
+        : (group.label || friendlyDomain(group.domain));
     await renderAfterLocalTabChange();
-    showToast(`已关闭「${groupLabel}」中的 ${urls.length} 个标签页`);
+    showToast(`已关闭「${groupLabel}」中的 ${tabIds.length} 个标签页`);
     return;
   }
 
@@ -1424,8 +1615,15 @@ document.addEventListener('click', async (e) => {
 
   // ---- Close ALL open tabs ----
   if (action === 'close-all-open-tabs') {
-    const allUrls = getRealTabs().map(t => t.url).filter(Boolean);
-    await closeTabsExact(allUrls);
+    const tabIds = getRealTabs()
+      .map(t => t.id)
+      .filter(Number.isInteger);
+    if (tabIds.length === 0) {
+      showToast('没有可关闭的标签页');
+      return;
+    }
+
+    await closeTabIds(tabIds);
     playCloseSound();
 
     document.querySelectorAll('#openTabsMissions .mission-card').forEach(c => {
@@ -1436,7 +1634,7 @@ document.addEventListener('click', async (e) => {
     });
 
     await renderAfterLocalTabChange();
-    showToast('已关闭全部标签页，清爽了');
+    showToast('已关闭全部标签页，固定页面还在');
     return;
   }
 });
@@ -1493,7 +1691,9 @@ chrome.tabs.onUpdated.addListener(scheduleDashboardRefresh);
 chrome.tabs.onActivated.addListener(scheduleDashboardRefresh);
 chrome.windows.onFocusChanged.addListener(scheduleDashboardRefresh);
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.deferred) scheduleDashboardRefresh();
+  if (areaName === 'local' && (changes.deferred || changes[PINNED_PAGES_KEY])) {
+    scheduleDashboardRefresh();
+  }
 });
 
 document.addEventListener('visibilitychange', () => {

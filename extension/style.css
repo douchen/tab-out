@@ -218,6 +218,114 @@ header {
   white-space: nowrap;
 }
 
+/* ---- Pinned Pages ---- */
+.pinned-section {
+  margin-bottom: 36px;
+}
+
+.pinned-pages {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.pinned-page {
+  background: var(--card-bg);
+  border: 1px solid rgba(90, 122, 98, 0.22);
+  border-radius: 8px;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.pinned-page:hover {
+  box-shadow: 0 4px 20px var(--shadow);
+  transform: translateY(-1px);
+}
+
+.pinned-page-main {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  text-align: left;
+  font-family: var(--font-body);
+}
+
+.pinned-favicon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.pinned-page-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pinned-page-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-page-meta {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-page-status {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-sage);
+  background: rgba(90, 122, 98, 0.08);
+  border-radius: 3px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.pinned-page-remove {
+  width: 34px;
+  border: none;
+  border-left: 1px solid rgba(90, 122, 98, 0.14);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.45;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.pinned-page-remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pinned-page-remove:hover {
+  opacity: 1;
+  color: var(--status-abandoned);
+  background: rgba(179, 90, 90, 0.08);
+}
+
 /* ---- Mission Cards ---- */
 .missions {
   columns: 280px;
@@ -466,6 +574,13 @@ header {
 .chip-save:hover {
   color: var(--accent-sage);
   background: rgba(90, 122, 98, 0.08);
+}
+
+.chip-pin:hover,
+.chip-pin.is-pinned {
+  color: var(--accent-amber);
+  background: rgba(200, 113, 58, 0.08);
+  opacity: 1;
 }
 
 .chip-close-below:hover {
